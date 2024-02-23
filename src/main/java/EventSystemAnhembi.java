@@ -1,11 +1,10 @@
-import java.io.*;
-import java.util.Scanner;
-import java.io.IOException;
+import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Scanner;
 
 public class EventSystemAnhembi {
     private List<User> users;
@@ -15,7 +14,8 @@ public class EventSystemAnhembi {
     public EventSystemAnhembi() {
         this.users = new ArrayList<>();
         this.events = new ArrayList<>();
-        loadEventsFromFile();
+        initializeDatabase();
+        loadEventsFromDatabase();
     }
 
     public void registerUser(String name, String city, String email) {
@@ -26,7 +26,7 @@ public class EventSystemAnhembi {
     public void createEvent(String name, String address, String category, LocalDateTime dateTime, String description) {
         Event event = new Event(name, address, category, dateTime, description);
         events.add(event);
-        saveEventsToFile();
+        saveEventsToDatabase();
     }
 
     public void listEvents() {
@@ -58,32 +58,81 @@ public class EventSystemAnhembi {
         }
     }
 
-    private void loadEventsFromFile() {
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream("events.data");
-             ObjectInputStream ois = new ObjectInputStream(is)) {
-            events = (List<Event>) ois.readObject();
-        } catch (IOException | ClassNotFoundException e) {
-            // Handle exceptions
-        }
-    }
+    private void initializeDatabase() {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:eventsystem.db");
+             Statement statement = connection.createStatement()) {
 
-    private void saveEventsToFile() {
-        try (OutputStream os = new FileOutputStream("src/test/resources/events.data");
-             ObjectOutputStream oos = new ObjectOutputStream(os)) {
-            oos.writeObject(events);
-        } catch (IOException e) {
+            String createTableSQL = "CREATE TABLE IF NOT EXISTS events (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "name TEXT," +
+                    "address TEXT," +
+                    "category TEXT," +
+                    "datetime TEXT," +
+                    "description TEXT);";
+
+            statement.executeUpdate(createTableSQL);
+
+        } catch (SQLException e) {
             e.printStackTrace();
         }
     }
-    
+
+    private void loadEventsFromDatabase() {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:eventsystem.db");
+             Statement statement = connection.createStatement()) {
+
+            String selectSQL = "SELECT * FROM events";
+            ResultSet resultSet = statement.executeQuery(selectSQL);
+
+            while (resultSet.next()) {
+                String name = resultSet.getString("name");
+                String address = resultSet.getString("address");
+                String category = resultSet.getString("category");
+                LocalDateTime dateTime = LocalDateTime.parse(resultSet.getString("datetime"), dateTimeFormatter);
+                String description = resultSet.getString("description");
+
+                Event event = new Event(name, address, category, dateTime, description);
+                events.add(event);
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void saveEventsToDatabase() {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:eventsystem.db");
+             Statement statement = connection.createStatement()) {
+
+            String deleteSQL = "DELETE FROM events";
+            statement.executeUpdate(deleteSQL);
+
+            String insertSQL = "INSERT INTO events (name, address, category, datetime, description) VALUES (?, ?, ?, ?, ?)";
+
+            for (Event event : events) {
+                try (PreparedStatement preparedStatement = connection.prepareStatement(insertSQL)) {
+                    preparedStatement.setString(1, event.name);
+                    preparedStatement.setString(2, event.address);
+                    preparedStatement.setString(3, event.category);
+                    preparedStatement.setString(4, event.dateTime.format(dateTimeFormatter));
+                    preparedStatement.setString(5, event.description);
+                    preparedStatement.executeUpdate();
+                }
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     public List<User> getUsers() {
         return users;
     }
-    
+
     public List<Event> getEvents() {
         return events;
     }
-    
+
     public static void main(String[] args) {
         EventSystemAnhembi eventSystem = new EventSystemAnhembi();
         Scanner scanner = new Scanner(System.in);
@@ -98,7 +147,7 @@ public class EventSystemAnhembi {
 
             System.out.print("Escolha uma opção: ");
             int choice = scanner.nextInt();
-            scanner.nextLine(); // Consumir a quebra de linha após o próximo inteiro
+            scanner.nextLine();
 
             switch (choice) {
                 case 1:
@@ -161,7 +210,7 @@ public class EventSystemAnhembi {
             }
         }
     }
-    
+
     private Event findEventByName(String eventName) {
         for (Event event : events) {
             if (event.name.equals(eventName)) {
