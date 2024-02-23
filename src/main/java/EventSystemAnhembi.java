@@ -8,6 +8,11 @@ import java.util.Collections;
 import java.util.InputMismatchException;
 import java.util.List;
 import java.util.Scanner;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class EventSystemAnhembi {
     private List<User> users;
@@ -267,7 +272,6 @@ public class EventSystemAnhembi {
                         cancelEventForAll();
                         break;
                     case 4:
-                        // Voltar
                         break;
                     default:
                         System.out.println("Opção inválida. Tente novamente.");
@@ -352,7 +356,7 @@ public class EventSystemAnhembi {
         }
     }
 
-    private void listAvailableEvents() {
+    void listAvailableEvents() {
         System.out.println("Eventos Disponíveis:");
         for (Event event : events) {
             if (!event.isCancelled() && !event.getAttendees().contains(event.getExhibitor())) {
@@ -368,7 +372,7 @@ public class EventSystemAnhembi {
         }
     }
 
-    private void confirmAttendance(User user) {
+    void confirmAttendance(User user) {
         Scanner scanner = new Scanner(System.in);
         System.out.print("Digite o ID do evento que deseja confirmar presença: ");
         int eventId = scanner.nextInt();
@@ -382,7 +386,7 @@ public class EventSystemAnhembi {
         }
     }
 
-    private void listConfirmedEvents(User user) {
+    void listConfirmedEvents(User user) {
         System.out.println("Eventos Confirmados para " + user.getName() + ":");
         for (Event event : user.getConfirmedEvents()) {
             System.out.println("Nome: " + event.getName());
@@ -450,12 +454,30 @@ public class EventSystemAnhembi {
             return;
         }
 
-        System.out.print("Cidade: ");
-        String city = scanner.nextLine();
-        if (city == null || city.trim().isEmpty()) {
-            System.out.println("Cidade é obrigatória. Tente novamente.");
+        System.out.print("Estado (selecione o número): \n");
+        printStates();
+
+        int stateChoice = scanner.nextInt();
+        scanner.nextLine();
+
+        String selectedState = getStateByChoice(stateChoice);
+        if (selectedState == null) {
+            System.out.println("Opção inválida para estado. Tente novamente.");
             return;
         }
+
+        System.out.print("Cidade (selecione o número): \n");
+        printCities(selectedState);
+
+        int cityChoice = scanner.nextInt();
+        scanner.nextLine();
+
+        String selectedCity = getCityByChoice(selectedState, cityChoice);
+        if (selectedCity == null) {
+            System.out.println("Opção inválida para cidade. Tente novamente.");
+            return;
+        }
+
 
         System.out.print("Email: ");
         String email = scanner.nextLine();
@@ -480,9 +502,113 @@ public class EventSystemAnhembi {
             return;
         }
 
-        registerUser(username, name, city, email, password, isExhibitor);
+        registerUser(username, name, selectedCity, email, password, isExhibitor);
+    }
+    
+    private void printStates() {
+        try {
+            URL url = new URL("https://servicodados.ibge.gov.br/api/v1/localidades/estados");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            Scanner scanner = new Scanner(connection.getInputStream());
+            StringBuilder response = new StringBuilder();
+
+            while (scanner.hasNextLine()) {
+                response.append(scanner.nextLine());
+            }
+
+            JSONArray states = new JSONArray(response.toString());
+
+            for (int i = 0; i < states.length(); i++) {
+                JSONObject state = states.getJSONObject(i);
+                System.out.println((i + 1) + ". " + state.getString("sigla") + " - " + state.getString("nome"));
+            }
+
+            scanner.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
+    private String getStateByChoice(int choice) {
+        try {
+            URL url = new URL("https://servicodados.ibge.gov.br/api/v1/localidades/estados");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            Scanner scanner = new Scanner(connection.getInputStream());
+            StringBuilder response = new StringBuilder();
+
+            while (scanner.hasNextLine()) {
+                response.append(scanner.nextLine());
+            }
+
+            JSONArray states = new JSONArray(response.toString());
+
+            if (choice >= 1 && choice <= states.length()) {
+                JSONObject state = states.getJSONObject(choice - 1);
+                return state.getString("sigla");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    private void printCities(String state) {
+        try {
+            URL url = new URL("https://servicodados.ibge.gov.br/api/v1/localidades/estados/" + state + "/municipios");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            Scanner scanner = new Scanner(connection.getInputStream());
+            StringBuilder response = new StringBuilder();
+
+            while (scanner.hasNextLine()) {
+                response.append(scanner.nextLine());
+            }
+
+            JSONArray cities = new JSONArray(response.toString());
+
+            for (int i = 0; i < cities.length(); i++) {
+                JSONObject city = cities.getJSONObject(i);
+                System.out.println((i + 1) + ". " + city.getString("nome"));
+            }
+
+            scanner.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private String getCityByChoice(String state, int choice) {
+        try {
+            URL url = new URL("https://servicodados.ibge.gov.br/api/v1/localidades/estados/" + state + "/municipios");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            Scanner scanner = new Scanner(connection.getInputStream());
+            StringBuilder response = new StringBuilder();
+
+            while (scanner.hasNextLine()) {
+                response.append(scanner.nextLine());
+            }
+
+            JSONArray cities = new JSONArray(response.toString());
+
+            if (choice >= 1 && choice <= cities.length()) {
+                JSONObject city = cities.getJSONObject(choice - 1);
+                return city.getString("nome");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+    
     private boolean isValidEmail(String email) {
         return email.matches("^[a-zA-Z0-9_+&*-]+(?:\\.[a-zA-Z0-9_+&*-]+)*@(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,7}$");
     }
@@ -594,7 +720,7 @@ public class EventSystemAnhembi {
         }
     }
 
-    private void cancelEventForAll(Event event) {
+    void cancelEventForAll(Event event) {
         event.cancelEventForAll();
         updateEventInDatabase(event);
         System.out.println("Evento cancelado para todos os participantes.");
