@@ -1,3 +1,4 @@
+import java.io.*;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -9,6 +10,7 @@ import java.util.Scanner;
 public class EventSystemAnhembi {
     private List<User> users;
     private List<Event> events;
+    private Connection connection;
     public static final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     public EventSystemAnhembi() {
@@ -18,111 +20,166 @@ public class EventSystemAnhembi {
         loadEventsFromDatabase();
     }
 
-    public void registerUser(String name, String city, String email) {
-        User user = new User(name, city, email);
-        users.add(user);
+    private void initializeDatabase() {
+        try {
+            Class.forName("org.sqlite.JDBC");
+            connection = DriverManager.getConnection("jdbc:sqlite:eventsystem2.db");
+            createTables();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
-    public void createEvent(String name, String address, String category, LocalDateTime dateTime, String description) {
-        Event event = new Event(name, address, category, dateTime, description);
+    private void createTables() {
+        try (Statement statement = connection.createStatement()) {
+            String createUserTable = "CREATE TABLE IF NOT EXISTS users (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "username TEXT NOT NULL," +
+                    "name TEXT NOT NULL," +
+                    "city TEXT NOT NULL," +
+                    "email TEXT NOT NULL," +
+                    "password TEXT NOT NULL," +
+                    "is_exhibitor BOOLEAN NOT NULL" +
+                    ");";
+            statement.executeUpdate(createUserTable);
+
+            String createEventTable = "CREATE TABLE IF NOT EXISTS events (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "name TEXT NOT NULL," +
+                    "address TEXT NOT NULL," +
+                    "category TEXT NOT NULL," +
+                    "date_time TEXT NOT NULL," +
+                    "description TEXT NOT NULL," +
+                    "exhibitor_id INTEGER NOT NULL," +
+                    "cancelled BOOLEAN NOT NULL" +
+                    ");";
+
+            statement.executeUpdate(createEventTable);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void registerUser(String username, String name, String city, String email, String password, boolean isExhibitor) {
+        User user = new User(username, name, city, email, password, isExhibitor);
+        users.add(user);
+        saveUserToDatabase(user);
+    }
+
+    private void saveUserToDatabase(User user) {
+        try (PreparedStatement preparedStatement = connection.prepareStatement(
+                "INSERT INTO users (username, name, city, email, password, is_exhibitor) VALUES (?, ?, ?, ?, ?, ?)")) {
+            preparedStatement.setString(1, user.getUsername());
+            preparedStatement.setString(2, user.getName());
+            preparedStatement.setString(3, user.getCity());
+            preparedStatement.setString(4, user.getEmail());
+            preparedStatement.setString(5, user.getPassword());
+            preparedStatement.setBoolean(6, user.isExhibitor());
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void createEvent(String name, String address, String category, LocalDateTime dateTime, String description, User exhibitor) {
+        Event event = new Event(name, address, category, dateTime, description, exhibitor);
         events.add(event);
-        saveEventsToDatabase();
+        saveEventToDatabase(event);
+    }
+
+    private void saveEventToDatabase(Event event) {
+        try (PreparedStatement preparedStatement = connection.prepareStatement(
+                "INSERT INTO events (name, address, category, date_time, description, exhibitor_id, cancelled) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+            preparedStatement.setString(1, event.getName());
+            preparedStatement.setString(2, event.getAddress());
+            preparedStatement.setString(3, event.getCategory());
+            preparedStatement.setString(4, event.getDateTime().format(dateTimeFormatter));
+            preparedStatement.setString(5, event.getDescription());
+            preparedStatement.setInt(6, event.getExhibitor().getId());
+            preparedStatement.setBoolean(7, event.isCancelled());
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public void listEvents() {
-        Collections.sort(events, (e1, e2) -> e1.dateTime.compareTo(e2.dateTime));
+        Collections.sort(events, (e1, e2) -> e1.getDateTime().compareTo(e2.getDateTime()));
 
         for (Event event : events) {
-            System.out.println("Name: " + event.name);
-            System.out.println("Category: " + event.category);
-            System.out.println("Address: " + event.address);
-            System.out.println("Date and Time: " + event.dateTime.format(dateTimeFormatter));
-            System.out.println("Description: " + event.description);
+            System.out.println("Name: " + event.getName());
+            System.out.println("Category: " + event.getCategory());
+            System.out.println("Address: " + event.getAddress());
+            System.out.println("Date and Time: " + event.getDateTime().format(dateTimeFormatter));
+            System.out.println("Description: " + event.getDescription());
             System.out.println("----------------------------");
         }
     }
 
     public void joinEvent(User user, Event event) {
         if (events.contains(event)) {
-            System.out.println(user.name + " participou do evento: " + event.name);
+            System.out.println(user.getName() + " participou do evento: " + event.getName());
+            user.confirmAttendance(event);
+            updateEventInDatabase(event);
         } else {
             System.out.println("Evento não encontrado.");
+        }
+    }
+
+    private void updateEventInDatabase(Event event) {
+        try (PreparedStatement preparedStatement = connection.prepareStatement(
+                "UPDATE events SET cancelled = ? WHERE id = ?")) {
+            preparedStatement.setBoolean(1, event.isCancelled());
+            preparedStatement.setInt(2, event.getId());
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
     public void cancelEvent(User user, Event event) {
         if (events.contains(event)) {
-            System.out.println(user.name + " cancelou a participação no evento: " + event.name);
+            System.out.println(user.getName() + " cancelou a participação no evento: " + event.getName());
+            user.cancelAttendance(event);
+            updateEventInDatabase(event);
         } else {
             System.out.println("Evento não encontrado.");
         }
     }
 
-    private void initializeDatabase() {
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:eventsystem.db");
-             Statement statement = connection.createStatement()) {
-
-            String createTableSQL = "CREATE TABLE IF NOT EXISTS events (" +
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "name TEXT," +
-                    "address TEXT," +
-                    "category TEXT," +
-                    "datetime TEXT," +
-                    "description TEXT);";
-
-            statement.executeUpdate(createTableSQL);
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
     private void loadEventsFromDatabase() {
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:eventsystem.db");
-             Statement statement = connection.createStatement()) {
-
-            String selectSQL = "SELECT * FROM events";
-            ResultSet resultSet = statement.executeQuery(selectSQL);
-
+        try (Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT * FROM events")) {
             while (resultSet.next()) {
-                String name = resultSet.getString("name");
-                String address = resultSet.getString("address");
-                String category = resultSet.getString("category");
-                LocalDateTime dateTime = LocalDateTime.parse(resultSet.getString("datetime"), dateTimeFormatter);
-                String description = resultSet.getString("description");
+                int id = resultSet.getInt("id");
+                String eventName = resultSet.getString("name");
+                String eventAddress = resultSet.getString("address");
+                String eventCategory = resultSet.getString("category");
+                LocalDateTime eventDateTime = LocalDateTime.parse(resultSet.getString("date_time"), dateTimeFormatter);
+                String eventDescription = resultSet.getString("description");
+                int exhibitorId = resultSet.getInt("exhibitor_id");
+                boolean cancelled = resultSet.getBoolean("cancelled");
 
-                Event event = new Event(name, address, category, dateTime, description);
+                User exhibitor = findUserById(exhibitorId);
+
+                Event event = new Event(eventName, eventAddress, eventCategory, eventDateTime, eventDescription, exhibitor);
+                event.setId(id);  
+
                 events.add(event);
             }
-
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
-    private void saveEventsToDatabase() {
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:eventsystem.db");
-             Statement statement = connection.createStatement()) {
 
-            String deleteSQL = "DELETE FROM events";
-            statement.executeUpdate(deleteSQL);
-
-            String insertSQL = "INSERT INTO events (name, address, category, datetime, description) VALUES (?, ?, ?, ?, ?)";
-
-            for (Event event : events) {
-                try (PreparedStatement preparedStatement = connection.prepareStatement(insertSQL)) {
-                    preparedStatement.setString(1, event.name);
-                    preparedStatement.setString(2, event.address);
-                    preparedStatement.setString(3, event.category);
-                    preparedStatement.setString(4, event.dateTime.format(dateTimeFormatter));
-                    preparedStatement.setString(5, event.description);
-                    preparedStatement.executeUpdate();
-                }
+    private User findUserById(int userId) {
+        for (User user : users) {
+            if (user.getId() == userId) {
+                return user;
             }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
         }
+        return null;
     }
 
     public List<User> getUsers() {
@@ -138,85 +195,285 @@ public class EventSystemAnhembi {
         Scanner scanner = new Scanner(System.in);
 
         while (true) {
-            System.out.println("1. Cadastrar Usuário");
-            System.out.println("2. Criar Evento");
-            System.out.println("3. Listar Eventos");
-            System.out.println("4. Participar de um Evento");
-            System.out.println("5. Cancelar Participação em um Evento");
+            System.out.println("1. Login");
             System.out.println("0. Sair");
-
             System.out.print("Escolha uma opção: ");
-            int choice = scanner.nextInt();
-            scanner.nextLine();
+            int mainChoice = scanner.nextInt();
+            scanner.nextLine(); 
 
-            switch (choice) {
+            switch (mainChoice) {
                 case 1:
-                    System.out.print("Nome do usuário: ");
-                    String userName = scanner.nextLine();
-                    System.out.print("Cidade: ");
-                    String city = scanner.nextLine();
-                    System.out.print("Email: ");
-                    String email = scanner.nextLine();
-                    eventSystem.registerUser(userName, city, email);
+                    eventSystem.login();
                     break;
-
-                case 2:
-                    System.out.print("Nome do evento: ");
-                    String eventName = scanner.nextLine();
-                    System.out.print("Endereço: ");
-                    String address = scanner.nextLine();
-                    System.out.print("Categoria: ");
-                    String category = scanner.nextLine();
-                    System.out.print("Data e Hora (YYYY-MM-DD HH:mm): ");
-                    String dateTimeStr = scanner.nextLine();
-                    LocalDateTime dateTime = LocalDateTime.parse(dateTimeStr, dateTimeFormatter);
-                    System.out.print("Descrição: ");
-                    String description = scanner.nextLine();
-                    eventSystem.createEvent(eventName, address, category, dateTime, description);
-                    break;
-
-                case 3:
-                    eventSystem.listEvents();
-                    break;
-
-                case 4:
-                    System.out.print("Digite o nome do evento que deseja participar: ");
-                    String eventToJoin = scanner.nextLine();
-                    Event foundEventToJoin = eventSystem.findEventByName(eventToJoin);
-                    if (foundEventToJoin != null) {
-                        eventSystem.joinEvent(new User("Usuário Temporário", "Cidade Temporária", "email@temp.com"), foundEventToJoin);
-                    } else {
-                        System.out.println("Evento não encontrado.");
-                    }
-                    break;
-
-                case 5:
-                    System.out.print("Digite o nome do evento do qual deseja cancelar a participação: ");
-                    String eventToCancel = scanner.nextLine();
-                    Event foundEventToCancel = eventSystem.findEventByName(eventToCancel);
-                    if (foundEventToCancel != null) {
-                        eventSystem.cancelEvent(new User("Usuário Temporário", "Cidade Temporária", "email@temp.com"), foundEventToCancel);
-                    } else {
-                        System.out.println("Evento não encontrado.");
-                    }
-                    break;
-
                 case 0:
                     System.out.println("Saindo do sistema...");
                     System.exit(0);
-
                 default:
                     System.out.println("Opção inválida. Tente novamente.");
             }
         }
     }
 
-    private Event findEventByName(String eventName) {
+    private void login() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("1. Usuário");
+        System.out.println("2. Expositor");
+        System.out.print("Selecione: ");
+        int userTypeChoice = scanner.nextInt();
+        scanner.nextLine(); 
+
+        switch (userTypeChoice) {
+            case 1:
+                System.out.println("1. Já tenho cadastro");
+                System.out.println("2. Não tenho cadastro");
+                System.out.print("Selecione: ");
+                int userExistenceChoice = scanner.nextInt();
+                scanner.nextLine();
+
+                if (userExistenceChoice == 1) {
+                    loginUser();
+                } else if (userExistenceChoice == 2) {
+                    registerUser();
+                } else {
+                    System.out.println("Opção inválida. Tente novamente.");
+                }
+                break;
+            case 2:
+                System.out.println("1. Listar eventos");
+                System.out.println("2. Cadastrar evento");
+                System.out.println("3. Cancelar evento para todos");
+                System.out.println("4. Voltar");
+                System.out.print("Selecione: ");
+                int exhibitorChoice = scanner.nextInt();
+                scanner.nextLine();
+
+                switch (exhibitorChoice) {
+                    case 1:
+                        listEvents();
+                        break;
+                    case 2:
+                        createEvent();
+                        break;
+                    case 3:
+                        cancelEventForAll();
+                        break;
+                    case 4:
+                        // Voltar
+                        break;
+                    default:
+                        System.out.println("Opção inválida. Tente novamente.");
+                }
+                break;
+            default:
+                System.out.println("Opção inválida. Tente novamente.");
+        }
+    }
+
+    private void loginUser() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Email: ");
+        String email = scanner.nextLine();
+        System.out.print("Senha: ");
+        String password = scanner.nextLine();
+
+        User loggedInUser = validateUser(email, password);
+        if (loggedInUser != null) {
+            System.out.println("Login bem-sucedido! Bem-vindo, " + loggedInUser.getName() + ".");
+            userMenu(loggedInUser);
+        } else {
+            System.out.println("Email ou senha incorretos. Tente novamente.");
+        }
+    }
+
+    private User validateUser(String email, String password) {
+        for (User user : users) {
+            if (user.getEmail().equals(email) && user.getPassword().equals(password)) {
+                return user;
+            }
+        }
+        return null;
+    }
+
+    private void userMenu(User user) {
+        Scanner scanner = new Scanner(System.in);
+
+        while (true) {
+            System.out.println("1. Listar eventos disponíveis");
+            System.out.println("2. Confirmar presença em evento");
+            System.out.println("3. Listar eventos que confirmei presença");
+            System.out.println("4. Cancelar presença em um evento");
+            System.out.println("5. Comparecer a um evento");
+            System.out.println("6. Sair da minha conta");
+            System.out.print("Escolha uma opção: ");
+            int userChoice = scanner.nextInt();
+            scanner.nextLine(); 
+
+            switch (userChoice) {
+                case 1:
+                    listAvailableEvents();
+                    break;
+                case 2:
+                    confirmAttendance(user);
+                    break;
+                case 3:
+                    listConfirmedEvents(user);
+                    break;
+                case 4:
+                    cancelAttendance(user);
+                    break;
+                case 5:
+                    markAttendance(user);
+                    break;
+                case 6:
+                    System.out.println("Saindo da conta...");
+                    return;
+                default:
+                    System.out.println("Opção inválida. Tente novamente.");
+            }
+        }
+    }
+
+    private void listAvailableEvents() {
+        System.out.println("Eventos Disponíveis:");
         for (Event event : events) {
-            if (event.name.equals(eventName)) {
+            if (!event.isCancelled() && !event.getAttendees().contains(event.getExhibitor())) {
+                System.out.println("ID: " + event.getId());
+                System.out.println("Nome: " + event.getName());
+                System.out.println("Categoria: " + event.getCategory());
+                System.out.println("Endereço: " + event.getAddress());
+                System.out.println("Data e Hora: " + event.getDateTime().format(dateTimeFormatter));
+                System.out.println("Descrição: " + event.getDescription());
+                System.out.println("Expositor: " + event.getExhibitor().getName());
+                System.out.println("----------------------------");
+            }
+        }
+    }
+
+    private void confirmAttendance(User user) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Digite o ID do evento que deseja confirmar presença: ");
+        int eventId = scanner.nextInt();
+        scanner.nextLine(); 
+
+        Event selectedEvent = findEventById(eventId);
+        if (selectedEvent != null) {
+            joinEvent(user, selectedEvent);
+        } else {
+            System.out.println("Evento não encontrado.");
+        }
+    }
+
+    private void listConfirmedEvents(User user) {
+        System.out.println("Eventos Confirmados para " + user.getName() + ":");
+        for (Event event : user.getConfirmedEvents()) {
+            System.out.println("Nome: " + event.getName());
+            System.out.println("Categoria: " + event.getCategory());
+            System.out.println("Endereço: " + event.getAddress());
+            System.out.println("Data e Hora: " + event.getDateTime().format(dateTimeFormatter));
+            System.out.println("Descrição: " + event.getDescription());
+            System.out.println("Expositor: " + event.getExhibitor().getName());
+            System.out.println("----------------------------");
+        }
+    }
+
+    private void cancelAttendance(User user) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Digite o ID do evento que deseja cancelar presença: ");
+        int eventId = scanner.nextInt();
+        scanner.nextLine(); 
+
+        Event selectedEvent = findEventById(eventId);
+        if (selectedEvent != null) {
+            cancelEvent(user, selectedEvent);
+        } else {
+            System.out.println("Evento não encontrado.");
+        }
+    }
+
+    private void markAttendance(User user) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Digite o ID do evento que deseja comparecer: ");
+        int eventId = scanner.nextInt();
+        scanner.nextLine(); 
+
+        Event selectedEvent = findEventById(eventId);
+        if (selectedEvent != null) {
+            System.out.println("Parabéns, " + user.getName() + "! Você compareceu ao evento: " + selectedEvent.getName());
+            user.confirmAttendance(selectedEvent);
+            updateEventInDatabase(selectedEvent);
+        } else {
+            System.out.println("Evento não encontrado.");
+        }
+    }
+
+    private Event findEventById(int eventId) {
+        for (Event event : events) {
+            if (event.getId() == eventId) {
                 return event;
             }
         }
         return null;
+    }
+
+    private void registerUser() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Nome de usuário: ");
+        String username = scanner.nextLine();
+        System.out.print("Nome: ");
+        String name = scanner.nextLine();
+        System.out.print("Cidade: ");
+        String city = scanner.nextLine();
+        System.out.print("Email: ");
+        String email = scanner.nextLine();
+        System.out.print("Senha: ");
+        String password = scanner.nextLine();
+        System.out.print("É expositor? (true/false): ");
+        boolean isExhibitor = scanner.nextBoolean();
+        scanner.nextLine(); 
+
+        registerUser(username, name, city, email, password, isExhibitor);
+    }
+
+    private void createEvent() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Nome do evento: ");
+        String eventName = scanner.nextLine();
+        System.out.print("Endereço: ");
+        String address = scanner.nextLine();
+        System.out.print("Categoria: ");
+        String category = scanner.nextLine();
+        System.out.print("Data e Hora (YYYY-MM-DD HH:mm): ");
+        String dateTimeStr = scanner.nextLine();
+        LocalDateTime dateTime = LocalDateTime.parse(dateTimeStr, dateTimeFormatter);
+        System.out.print("Descrição: ");
+        String description = scanner.nextLine();
+
+        User exhibitor = getLoggedInExhibitor();
+        createEvent(eventName, address, category, dateTime, description, exhibitor);
+    }
+
+    private User getLoggedInExhibitor() {
+       
+        return findUserById(1);  
+    }
+
+    private void cancelEventForAll() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Digite o ID do evento que deseja cancelar para todos: ");
+        int eventId = scanner.nextInt();
+        scanner.nextLine();
+
+        Event selectedEvent = findEventById(eventId);
+        if (selectedEvent != null) {
+            cancelEventForAll(selectedEvent);
+        } else {
+            System.out.println("Evento não encontrado.");
+        }
+    }
+
+    private void cancelEventForAll(Event event) {
+        event.cancelEventForAll();
+        updateEventInDatabase(event);
+        System.out.println("Evento cancelado para todos os participantes.");
     }
 }
