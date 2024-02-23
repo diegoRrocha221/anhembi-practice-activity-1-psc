@@ -2,8 +2,10 @@ import java.io.*;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.InputMismatchException;
 import java.util.List;
 import java.util.Scanner;
 
@@ -88,18 +90,25 @@ public class EventSystemAnhembi {
     }
 
     private void saveEventToDatabase(Event event) {
+        if (events.stream().anyMatch(existingEvent ->
+        existingEvent.getName().equalsIgnoreCase(event.getName()) &&
+        existingEvent.getDateTime().isEqual(event.getDateTime()))) {
+        System.out.println("Um evento com o mesmo nome e data/hora já está cadastrado. Tente novamente.");
+        return;
+        }
+
         try (PreparedStatement preparedStatement = connection.prepareStatement(
-                "INSERT INTO events (name, address, category, date_time, description, exhibitor_id, cancelled) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
-            preparedStatement.setString(1, event.getName());
-            preparedStatement.setString(2, event.getAddress());
-            preparedStatement.setString(3, event.getCategory());
-            preparedStatement.setString(4, event.getDateTime().format(dateTimeFormatter));
-            preparedStatement.setString(5, event.getDescription());
-            preparedStatement.setInt(6, event.getExhibitor().getId());
-            preparedStatement.setBoolean(7, event.isCancelled());
-            preparedStatement.executeUpdate();
+        "INSERT INTO events (name, address, category, date_time, description, exhibitor_id, cancelled) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+        preparedStatement.setString(1, event.getName());
+        preparedStatement.setString(2, event.getAddress());
+        preparedStatement.setString(3, event.getCategory());
+        preparedStatement.setString(4, event.getDateTime().format(dateTimeFormatter));
+        preparedStatement.setString(5, event.getDescription());
+        preparedStatement.setInt(6, event.getExhibitor().getId());
+        preparedStatement.setBoolean(7, event.isCancelled());
+        preparedStatement.executeUpdate();
         } catch (SQLException e) {
-            e.printStackTrace();
+        	e.printStackTrace();
         }
     }
 
@@ -276,6 +285,16 @@ public class EventSystemAnhembi {
         System.out.print("Senha: ");
         String password = scanner.nextLine();
 
+        if (email == null || email.trim().isEmpty() || !isValidEmail(email)) {
+            System.out.println("Email é obrigatório e deve ser válido. Tente novamente.");
+            return;
+        }
+
+        if (password == null || password.trim().isEmpty()) {
+            System.out.println("Senha é obrigatória. Tente novamente.");
+            return;
+        }
+
         User loggedInUser = validateUser(email, password);
         if (loggedInUser != null) {
             System.out.println("Login bem-sucedido! Bem-vindo, " + loggedInUser.getName() + ".");
@@ -419,43 +438,147 @@ public class EventSystemAnhembi {
         Scanner scanner = new Scanner(System.in);
         System.out.print("Nome de usuário: ");
         String username = scanner.nextLine();
+        if (username == null || username.trim().isEmpty()) {
+            System.out.println("Nome de usuário é obrigatório. Tente novamente.");
+            return;
+        }
+
         System.out.print("Nome: ");
         String name = scanner.nextLine();
+        if (name == null || name.trim().isEmpty()) {
+            System.out.println("Nome é obrigatório. Tente novamente.");
+            return;
+        }
+
         System.out.print("Cidade: ");
         String city = scanner.nextLine();
+        if (city == null || city.trim().isEmpty()) {
+            System.out.println("Cidade é obrigatória. Tente novamente.");
+            return;
+        }
+
         System.out.print("Email: ");
         String email = scanner.nextLine();
+        if (email == null || email.trim().isEmpty() || !isValidEmail(email)) {
+            System.out.println("Email é obrigatório e deve ser válido. Tente novamente.");
+            return;
+        }
+
         System.out.print("Senha: ");
         String password = scanner.nextLine();
+        if (password == null || password.trim().isEmpty()) {
+            System.out.println("Senha é obrigatória. Tente novamente.");
+            return;
+        }
+
         System.out.print("É expositor? (true/false): ");
-        boolean isExhibitor = scanner.nextBoolean();
-        scanner.nextLine(); 
+        boolean isExhibitor;
+        try {
+            isExhibitor = scanner.nextBoolean();
+        } catch (InputMismatchException e) {
+            System.out.println("Opção inválida para expositor. Use 'true' ou 'false'. Tente novamente.");
+            return;
+        }
 
         registerUser(username, name, city, email, password, isExhibitor);
     }
 
+    private boolean isValidEmail(String email) {
+        return email.matches("^[a-zA-Z0-9_+&*-]+(?:\\.[a-zA-Z0-9_+&*-]+)*@(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,7}$");
+    }
+    	
+    private String getCategoryByChoice(int choice) {
+        switch (choice) {
+            case 1:
+                return "Festas";
+            case 2:
+                return "Eventos";
+            case 3:
+                return "Esportivos";
+            case 4:
+                return "Shows";
+            case 5:
+                return "Festival";
+            case 6:
+                return "Concerto";
+            case 7:
+                return "Casamento";
+            default:
+                return null;
+        }
+    }
+    private User getLoggedInExhibitor() {
+        User exhibitor = findExhibitor();
+        if (exhibitor == null) {
+            System.out.println("Nenhum expositor cadastrado. Cadastre um expositor antes de criar eventos.");
+            return null;
+        }
+        return exhibitor;
+    }
+
+    private User findExhibitor() {
+        for (User user : users) {
+            if (user.isExhibitor()) {
+                return user;
+            }
+        }
+        return null;
+    }
     private void createEvent() {
+        User exhibitor = getLoggedInExhibitor();
+        if (exhibitor == null) {
+            return;
+        }
         Scanner scanner = new Scanner(System.in);
         System.out.print("Nome do evento: ");
         String eventName = scanner.nextLine();
         System.out.print("Endereço: ");
         String address = scanner.nextLine();
-        System.out.print("Categoria: ");
-        String category = scanner.nextLine();
-        System.out.print("Data e Hora (YYYY-MM-DD HH:mm): ");
+        System.out.print("Categoria (selecione o número): \n" +
+                "1. Festas\n" +
+                "2. Eventos\n" +
+                "3. Esportivos\n" +
+                "4. Shows\n" +
+                "5. Festival\n" +
+                "6. Concerto\n" +
+                "7. Casamento\n" +
+                "Selecione: ");
+        int categoryChoice;
+        try {
+            categoryChoice = scanner.nextInt();
+        } catch (InputMismatchException e) {
+            System.out.println("Opção inválida para categoria. Use um número de 1 a 7. Tente novamente.");
+            scanner.nextLine();
+            return;
+        }
+        String category = getCategoryByChoice(categoryChoice);
+        if (category == null) {
+            System.out.println("Opção inválida para categoria. Use um número de 1 a 7. Tente novamente.");
+            return;
+        }
+        scanner.nextLine(); // Consume the newline character
+
+        System.out.print("Data e Hora (DD/MM/YYYY HH:mm): ");
         String dateTimeStr = scanner.nextLine();
-        LocalDateTime dateTime = LocalDateTime.parse(dateTimeStr, dateTimeFormatter);
-        System.out.print("Descrição: ");
-        String description = scanner.nextLine();
+        try {
+            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+            LocalDateTime dateTime = LocalDateTime.parse(dateTimeStr, dateFormatter);
+            if (dateTime.isBefore(LocalDateTime.now())) {
+                System.out.println("A data do evento não pode ser no passado. Tente novamente.");
+                return;
+            }
 
-        User exhibitor = getLoggedInExhibitor();
-        createEvent(eventName, address, category, dateTime, description, exhibitor);
+            System.out.print("Descrição: ");
+            String description = scanner.nextLine();
+
+            createEvent(eventName, address, category, dateTime, description, exhibitor);
+        } catch (DateTimeParseException e) {
+            System.out.println("Formato de data e hora inválido. Use o formato DD/MM/YYYY HH:mm. Tente novamente.");
+            return;
+        }
     }
 
-    private User getLoggedInExhibitor() {
-       
-        return findUserById(1);  
-    }
+
 
     private void cancelEventForAll() {
         Scanner scanner = new Scanner(System.in);
