@@ -14,4 +14,9 @@ public class EventSystemAnhembi {
         User user = new User(name, city, email);
         users.add(user);
     }
+    
+    
+    public List<User> getUsers() {
+        return users;
+    }
 }
