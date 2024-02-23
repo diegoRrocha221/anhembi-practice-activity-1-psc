@@ -1,5 +1,11 @@
 # anhembi-practice-activity-1-psc
+<p align="center">
 
+  <a href="https://github.com/diegoRrocha221/anhembi-practice-activity-1-psc/blob/main/LICENSE"><img src="https://img.shields.io/github/license/diegoRrocha221/xarray-for-golang" alt="GitHub License"></a>
+  <a href=""><img src="https://raw.githubusercontent.com/jmnote/z-icons/master/svg/java.svg" width="40px" height="40px" alt="GitHub License"></a>
+   <a href=""><img src="https://raw.githubusercontent.com/jmnote/z-icons/master/svg/git.svg" width="40px" height="40px" alt="GitHub License"></a>
+  
+</p>
 <p align="center">
 A very simple implementation of a console system for registering events and users. divided into two access hierarchies, exhibitor and common user.
 
