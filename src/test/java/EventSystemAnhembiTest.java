@@ -1,5 +1,7 @@
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
+import java.io.*;
 import java.time.LocalDateTime;
 
 import org.junit.Test;
@@ -19,17 +21,17 @@ public class EventSystemAnhembiTest {
     
     @Test
     void testListEvents() {
-        EventSystem eventSystem = new EventSystem();
+        EventSystemAnhembi eventSystemAnhembi = new EventSystemAnhembi();
         Event event1 = new Event("Party1", "Venue1", "Social", LocalDateTime.now(), "Celebration1");
         Event event2 = new Event("Party2", "Venue2", "Social", LocalDateTime.now().plusDays(1), "Celebration2");
 
-        eventSystem.createEvent("Party1", "Venue1", "Social", LocalDateTime.now(), "Celebration1");
-        eventSystem.createEvent("Party2", "Venue2", "Social", LocalDateTime.now().plusDays(1), "Celebration2");
+        eventSystemAnhembi.createEvent("Party1", "Venue1", "Social", LocalDateTime.now(), "Celebration1");
+        eventSystemAnhembi.createEvent("Party2", "Venue2", "Social", LocalDateTime.now().plusDays(1), "Celebration2");
 
         ByteArrayOutputStream outContent = new ByteArrayOutputStream();
         System.setOut(new PrintStream(outContent));
 
-        eventSystem.listEvents();
+        eventSystemAnhembi.listEvents();
 
         String expectedOutput = "Name: Party1\nCategory: Social\nAddress: Venue1\nDate and Time: ";
         assertTrue(outContent.toString().contains(expectedOutput));
